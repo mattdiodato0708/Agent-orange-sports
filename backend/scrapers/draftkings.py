@@ -2,22 +2,13 @@ import asyncio
 import random
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from backend.scrapers.common import USER_AGENTS, MIN_DELAY, MAX_DELAY
 
 DRAFTKINGS_URLS = {
     "nfl": "https://sportsbook.draftkings.com/leagues/football/nfl",
     "nba": "https://sportsbook.draftkings.com/leagues/basketball/nba",
     "mlb": "https://sportsbook.draftkings.com/leagues/baseball/mlb",
 }
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/118.0.0.0 Safari/537.36",
-]
-
-# Minimum / maximum random delay (seconds) between page interactions
-MIN_DELAY = 1.0
-MAX_DELAY = 3.0
 
 
 async def scrape_draftkings(sport: str) -> list:

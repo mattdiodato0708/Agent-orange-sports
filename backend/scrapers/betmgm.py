@@ -2,22 +2,13 @@ import asyncio
 import random
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from backend.scrapers.common import USER_AGENTS, MIN_DELAY, MAX_DELAY
 
 BETMGM_URLS = {
     "nfl": "https://sports.betmgm.com/en/sports/football-11/betting/usa-9/nfl-35",
     "nba": "https://sports.betmgm.com/en/sports/basketball-7/betting/usa-9/nba-6004",
     "mlb": "https://sports.betmgm.com/en/sports/baseball-23/betting/usa-9/mlb-75",
 }
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/118.0.0.0 Safari/537.36",
-]
-
-# Minimum / maximum random delay (seconds) between page interactions
-MIN_DELAY = 1.0
-MAX_DELAY = 3.0
 
 
 async def scrape_betmgm(sport: str) -> list:
