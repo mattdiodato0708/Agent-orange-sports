@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎯 Agent Orange Sports — Arb Finder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+    header { background: #161b22; padding: 1.2rem 2rem; border-bottom: 1px solid #30363d;
+             display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.4rem; color: #f85149; }
+    header span { font-size: 0.85rem; color: #8b949e; }
+    #status { font-size: 0.8rem; color: #3fb950; }
+    .controls { padding: 1rem 2rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+    .controls label { font-size: 0.9rem; color: #8b949e; }
+    .controls input, .controls select {
+      background: #161b22; border: 1px solid #30363d; color: #e6edf3;
+      padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.9rem;
+    }
+    .controls button {
+      background: #238636; border: none; color: white; padding: 0.4rem 1rem;
+      border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+    }
+    .controls button:hover { background: #2ea043; }
+    #arb-count { font-size: 0.85rem; color: #8b949e; margin-left: auto; }
+    .table-wrap { padding: 0 2rem 2rem; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { background: #161b22; padding: 0.75rem 1rem; text-align: left;
+         color: #8b949e; border-bottom: 1px solid #30363d; white-space: nowrap; }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid #21262d; vertical-align: middle; }
+    tr:hover td { background: #161b22; }
+    .profit-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: bold; font-size: 0.85rem; }
+    .profit-low  { background: #1f3d1f; color: #3fb950; }
+    .profit-med  { background: #3d2b0f; color: #f0883e; }
+    .profit-high { background: #3d1414; color: #ff7b72; }
+    .book-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+      font-size: 0.78rem; background: #1c2128; border: 1px solid #30363d; margin: 0 2px; }
+    .sport-tag { font-size: 0.78rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    #empty { text-align: center; padding: 3rem; color: #484f58; font-size: 1rem; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d;
+               border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🟠 Agent Orange Sports — Arb Finder</h1>
+  <span id="status">● Connecting...</span>
+</header>
+<div class="controls">
+  <label>Min Profit %
+    <input type="number" id="min-profit" value="0.5" min="0" max="20" step="0.1" style="width:80px; margin-left:6px"/>
+  </label>
+  <label>Sport
+    <select id="sport-filter" style="margin-left:6px">
+      <option value="">All</option>
+      <option value="nfl">NFL</option>
+      <option value="nba">NBA</option>
+      <option value="mlb">MLB</option>
+    </select>
+  </label>
+  <button onclick="loadArbs()">🔄 Refresh</button>
+  <span id="arb-count"></span>
+</div>
+<div class="table-wrap">
+  <table id="arb-table">
+    <thead>
+      <tr>
+        <th>Sport</th><th>Matchup</th><th>Book (Home)</th><th>Odds</th>
+        <th>Book (Away)</th><th>Odds</th><th>Profit %</th>
+        <th>Stake Split ($100)</th><th>Guaranteed $</th><th>Found At</th>
+      </tr>
+    </thead>
+    <tbody id="arb-body">
+      <tr><td colspan="10" id="empty"><div class="spinner"></div> Loading arb opportunities...</td></tr>
+    </tbody>
+  </table>
+</div>
+<script>
+  async function loadArbs() {
+    const minProfit = document.getElementById("min-profit").value || 0.5;
+    const sport = document.getElementById("sport-filter").value;
+    const tbody = document.getElementById("arb-body");
+    const count = document.getElementById("arb-count");
+    tbody.innerHTML = `<tr><td colspan="10" id="empty"><div class="spinner"></div> Fetching...</td></tr>`;
+    try {
+      const res = await fetch(`/api/arbs?min_profit=${minProfit}`);
+      let data = await res.json();
+      if (sport) data = data.filter(d => d.sport === sport);
+      document.getElementById("status").textContent = "● Live";
+      document.getElementById("status").style.color = "#3fb950";
+      count.textContent = `${data.length} opportunit${data.length !== 1 ? "ies" : "y"} found`;
+      if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="10" id="empty">No arbs found yet — scan running every 60s ⏳</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(arb => {
+        const pct = parseFloat(arb.profit_pct);
+        const cls = pct < 2 ? "profit-low" : pct < 5 ? "profit-med" : "profit-high";
+        const dt = new Date(arb.found_at + "Z").toLocaleTimeString();
+        return `<tr>
+          <td><span class="sport-tag">${arb.sport}</span></td>
+          <td><strong>${arb.home_team}</strong> vs <strong>${arb.away_team}</strong></td>
+          <td><span class="book-tag">${arb.book_home}</span></td>
+          <td>${arb.home_odds}</td>
+          <td><span class="book-tag">${arb.book_away}</span></td>
+          <td>${arb.away_odds}</td>
+          <td><span class="profit-badge ${cls}">+${pct}%</span></td>
+          <td>$${arb.stake_home} / $${arb.stake_away}</td>
+          <td><strong style="color:#3fb950">$${arb.guaranteed_profit}</strong></td>
+          <td style="color:#8b949e;font-size:0.8rem">${dt}</td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      document.getElementById("status").textContent = "● Offline";
+      document.getElementById("status").style.color = "#f85149";
+      tbody.innerHTML = `<tr><td colspan="10" id="empty">Backend not reachable. Is the server running?</td></tr>`;
+    }
+  }
+  loadArbs();
+  setInterval(loadArbs, 30000);
+</script>
+</body>
+</html>

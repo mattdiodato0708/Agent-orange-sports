@@ -1,0 +1,62 @@
+import asyncio
+from backend.scrapers.fanduel import scrape_fanduel
+from backend.scrapers.draftkings import scrape_draftkings
+from backend.scrapers.betmgm import scrape_betmgm
+from backend.scrapers.odds_api import fetch_odds_api
+from backend.engine.arb_calculator import find_all_arbs
+from backend.db.database import save_arbs
+
+SPORTS = ["nfl", "nba", "mlb"]
+POLL_INTERVAL = 60  # seconds
+MIN_REQUIRED_SCRAPES = 3  # fallback to Odds API if fewer than this many events scraped
+
+async def run_cycle():
+    print(f"[Scheduler] Running arb scan...")
+    for sport in SPORTS:
+        print(f"  → Scraping {sport}...")
+
+        fd_data, dk_data, mgm_data = await asyncio.gather(
+            scrape_fanduel(sport),
+            scrape_draftkings(sport),
+            scrape_betmgm(sport),
+            return_exceptions=True
+        )
+
+        total_scraped = (
+            (len(fd_data) if isinstance(fd_data, list) else 0) +
+            (len(dk_data) if isinstance(dk_data, list) else 0) +
+            (len(mgm_data) if isinstance(mgm_data, list) else 0)
+        )
+
+        api_data = []
+        if total_scraped < MIN_REQUIRED_SCRAPES:
+            print(f"  → Falling back to Odds API for {sport}")
+            api_data = await fetch_odds_api(sport)
+
+        all_data = {
+            "FanDuel":    fd_data if isinstance(fd_data, list) else [],
+            "DraftKings": dk_data if isinstance(dk_data, list) else [],
+            "BetMGM":     mgm_data if isinstance(mgm_data, list) else [],
+        }
+
+        for item in api_data:
+            book = item.get("book", "API")
+            if book not in all_data:
+                all_data[book] = []
+            all_data[book].append(item)
+
+        arbs = find_all_arbs(all_data, min_profit=0.5)
+
+        if arbs:
+            print(f"  ✅ Found {len(arbs)} arb(s) for {sport}!")
+            await save_arbs(arbs)
+        else:
+            print(f"  — No arbs found for {sport}")
+
+async def start_scheduler():
+    while True:
+        try:
+            await run_cycle()
+        except Exception as e:
+            print(f"[Scheduler] Error: {e}")
+        await asyncio.sleep(POLL_INTERVAL)
