@@ -1,5 +1,5 @@
 from backend.engine.normalizer import american_to_decimal, match_events
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def find_arbs_from_events(events: list[dict], min_profit: float = 0.5) -> list[dict]:
@@ -54,7 +54,7 @@ def find_arbs_from_events(events: list[dict], min_profit: float = 0.5) -> list[d
             "stake_home": stake_home,
             "stake_away": stake_away,
             "guaranteed_profit_per_100": round(total * (1 - inv_sum), 2),
-            "found_at": datetime.utcnow().isoformat(),
+            "found_at": datetime.now(timezone.utc).isoformat(),
             "books_checked": len(books),
         })
 
@@ -92,7 +92,7 @@ def calculate_arb(event_a: dict, event_b: dict) -> dict | None:
                 "stake_home": stake_home,
                 "stake_away": stake_away,
                 "guaranteed_profit_per_100": guaranteed_profit,
-                "found_at": datetime.utcnow().isoformat(),
+                "found_at": datetime.now(timezone.utc).isoformat(),
                 "books_checked": 2,
             }
             if best is None or profit_pct > best["profit_pct"]:
