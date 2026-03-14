@@ -1,0 +1,91 @@
+import asyncio
+import random
+from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+
+DRAFTKINGS_URLS = {
+    "nfl": "https://sportsbook.draftkings.com/leagues/football/nfl",
+    "nba": "https://sportsbook.draftkings.com/leagues/basketball/nba",
+    "mlb": "https://sportsbook.draftkings.com/leagues/baseball/mlb",
+}
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/118.0.0.0 Safari/537.36",
+]
+
+# Minimum / maximum random delay (seconds) between page interactions
+MIN_DELAY = 1.0
+MAX_DELAY = 3.0
+
+
+async def scrape_draftkings(sport: str) -> list:
+    """Scrape moneyline odds from DraftKings for *sport*.
+
+    Returns a list of dicts: ``[{"event", "outcome", "odds", "book"}, ...]``
+    """
+    url = DRAFTKINGS_URLS.get(sport)
+    if not url:
+        return []
+
+    results: list[dict] = []
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+            )
+
+            page = await context.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
+
+            html = await page.content()
+            soup = BeautifulSoup(html, "html.parser")
+
+            # DraftKings event table selectors – may require updates on site changes
+            event_rows = soup.select(
+                "div.sportsbook-event-accordion__wrapper, "
+                "tr.sportsbook-table__body-row, "
+                "[class*='event-card']"
+            )
+
+            for row in event_rows:
+                teams = row.select(
+                    "span.event-cell__name-text, "
+                    "[class*='participant'], "
+                    "[class*='team-name']"
+                )
+                odds_els = row.select(
+                    "span.sportsbook-odds, "
+                    "[class*='price'], "
+                    "[class*='odds']"
+                )
+
+                if len(teams) >= 2 and len(odds_els) >= 2:
+                    event_name = f"{teams[0].get_text(strip=True)} vs {teams[1].get_text(strip=True)}"
+                    for team, odds_el in zip(teams, odds_els):
+                        odds_text = odds_el.get_text(strip=True).replace("+", "")
+                        try:
+                            odds_val = float(odds_text)
+                        except ValueError:
+                            continue
+                        results.append(
+                            {
+                                "event": event_name,
+                                "outcome": team.get_text(strip=True),
+                                "odds": odds_val,
+                                "book": "DraftKings",
+                                "sport": sport,
+                            }
+                        )
+
+            await browser.close()
+    except Exception as exc:
+        print(f"[DraftKings] Scrape error ({sport}): {exc}")
+
+    return results
