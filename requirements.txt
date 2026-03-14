@@ -5,6 +5,5 @@ beautifulsoup4
 httpx
 fuzzywuzzy
 python-Levenshtein
-apscheduler
 aiosqlite
 python-dotenv

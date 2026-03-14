@@ -1,125 +1,296 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🎯 Agent Orange Sports — Arb Finder</title>
+  <title>🟠 Agent Orange — Arb Finder</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
-    header { background: #161b22; padding: 1.2rem 2rem; border-bottom: 1px solid #30363d;
-             display: flex; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.4rem; color: #f85149; }
-    header span { font-size: 0.85rem; color: #8b949e; }
-    #status { font-size: 0.8rem; color: #3fb950; }
-    .controls { padding: 1rem 2rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
-    .controls label { font-size: 0.9rem; color: #8b949e; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: #161b22; border-bottom: 1px solid #30363d;
+      padding: 0.9rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; color: #ff7b00; letter-spacing: 0.02em; }
+
+    /* ── Scan status strip ── */
+    #scan-strip {
+      background: #0d1117; border-bottom: 1px solid #21262d;
+      padding: 0.45rem 1.5rem;
+      display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center;
+      font-size: 0.78rem; color: #8b949e;
+    }
+    #scan-strip .pill {
+      display: flex; align-items: center; gap: 0.35rem;
+    }
+    #scan-strip .pill .val { color: #e6edf3; font-weight: 600; }
+    #dot { width: 7px; height: 7px; border-radius: 50%; background: #484f58; flex-shrink: 0; }
+    #dot.live  { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+    #dot.error { background: #f85149; }
+    #countdown { font-variant-numeric: tabular-nums; }
+
+    /* ── Controls ── */
+    .controls {
+      padding: 0.75rem 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;
+      border-bottom: 1px solid #21262d;
+    }
+    .controls label { font-size: 0.82rem; color: #8b949e; display: flex; align-items: center; gap: 0.4rem; }
     .controls input, .controls select {
       background: #161b22; border: 1px solid #30363d; color: #e6edf3;
-      padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.9rem;
+      padding: 0.3rem 0.65rem; border-radius: 5px; font-size: 0.82rem;
     }
     .controls button {
-      background: #238636; border: none; color: white; padding: 0.4rem 1rem;
-      border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+      background: #238636; border: none; color: #fff; padding: 0.35rem 0.9rem;
+      border-radius: 5px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
     }
     .controls button:hover { background: #2ea043; }
-    #arb-count { font-size: 0.85rem; color: #8b949e; margin-left: auto; }
-    .table-wrap { padding: 0 2rem 2rem; overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th { background: #161b22; padding: 0.75rem 1rem; text-align: left;
-         color: #8b949e; border-bottom: 1px solid #30363d; white-space: nowrap; }
-    td { padding: 0.75rem 1rem; border-bottom: 1px solid #21262d; vertical-align: middle; }
+    #arb-count { margin-left: auto; font-size: 0.8rem; color: #8b949e; }
+
+    /* ── Table ── */
+    .table-wrap { padding: 0 1.5rem 2rem; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th {
+      background: #161b22; padding: 0.6rem 0.85rem; text-align: left;
+      color: #6e7681; border-bottom: 1px solid #30363d; white-space: nowrap;
+      font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    td { padding: 0.65rem 0.85rem; border-bottom: 1px solid #161b22; vertical-align: middle; }
     tr:hover td { background: #161b22; }
-    .profit-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: bold; font-size: 0.85rem; }
-    .profit-low  { background: #1f3d1f; color: #3fb950; }
-    .profit-med  { background: #3d2b0f; color: #f0883e; }
-    .profit-high { background: #3d1414; color: #ff7b72; }
-    .book-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
-      font-size: 0.78rem; background: #1c2128; border: 1px solid #30363d; margin: 0 2px; }
-    .sport-tag { font-size: 0.78rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
-    #empty { text-align: center; padding: 3rem; color: #484f58; font-size: 1rem; }
-    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d;
-               border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+    /* ── Sport badge ── */
+    .sport-tag {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      padding: 0.1rem 0.45rem; border-radius: 3px; letter-spacing: 0.06em;
+    }
+    .sport-nfl  { background: #1c2847; color: #79c0ff; }
+    .sport-nba  { background: #2a1a1a; color: #ff7b72; }
+    .sport-mlb  { background: #1a2a1a; color: #3fb950; }
+    .sport-nhl  { background: #1a2030; color: #a5d6ff; }
+    .sport-ncaaf { background: #2a2214; color: #f0883e; }
+    .sport-ncaab { background: #221429; color: #d2a8ff; }
+    .sport-other { background: #1c2128; color: #8b949e; }
+
+    /* ── Matchup ── */
+    .matchup { font-weight: 600; white-space: nowrap; }
+    .matchup .vs { color: #484f58; font-weight: 400; margin: 0 0.3rem; font-size: 0.75rem; }
+
+    /* ── Book + odds cell ── */
+    .book-cell { display: flex; flex-direction: column; gap: 0.15rem; }
+    .book-name {
+      font-size: 0.72rem; color: #8b949e; white-space: nowrap;
+      border: 1px solid #30363d; border-radius: 3px; padding: 0.1rem 0.35rem;
+      display: inline-block; background: #161b22;
+    }
+    .odds-val { font-weight: 700; font-size: 0.9rem; color: #e6edf3; }
+    .odds-pos { color: #3fb950; }
+    .odds-neg { color: #ff7b72; }
+
+    /* ── Profit badge ── */
+    .profit-badge {
+      display: inline-block; padding: 0.25rem 0.65rem; border-radius: 20px;
+      font-weight: 800; font-size: 0.88rem; white-space: nowrap;
+    }
+    .profit-low  { background: #0f2a0f; color: #3fb950; border: 1px solid #238636; }
+    .profit-med  { background: #2a1e0a; color: #f0883e; border: 1px solid #9e6a03; }
+    .profit-high { background: #2a0d0d; color: #ff7b72; border: 1px solid #da3633; }
+
+    /* ── Books checked ── */
+    .books-checked { font-size: 0.75rem; color: #6e7681; }
+
+    /* ── Stake split ── */
+    .stake-cell { white-space: nowrap; font-size: 0.82rem; }
+
+    /* ── Guaranteed profit ── */
+    .gprofit { font-weight: 700; color: #3fb950; font-size: 0.9rem; }
+
+    /* ── Age ── */
+    .age { font-size: 0.75rem; color: #484f58; }
+
+    /* ── Empty / loading ── */
+    #empty-row td {
+      text-align: center; padding: 3rem; color: #484f58; font-size: 0.9rem;
+    }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; border: 2px solid #30363d;
+      border-top-color: #58a6ff; border-radius: 50%;
+      animation: spin 0.75s linear infinite; vertical-align: middle; margin-right: 0.4rem;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+
 <header>
-  <h1>🟠 Agent Orange Sports — Arb Finder</h1>
-  <span id="status">● Connecting...</span>
+  <h1>🟠 Agent Orange — Arbitrage Finder</h1>
 </header>
+
+<div id="scan-strip">
+  <span class="pill"><span id="dot"></span><span id="status-text">Connecting…</span></span>
+  <span class="pill">Last scan: <span class="val" id="last-scan">—</span></span>
+  <span class="pill">Next scan: <span class="val" id="countdown">—</span></span>
+  <span class="pill">Books / game (avg): <span class="val" id="avg-books">—</span></span>
+</div>
+
 <div class="controls">
-  <label>Min Profit %
-    <input type="number" id="min-profit" value="0.5" min="0" max="20" step="0.1" style="width:80px; margin-left:6px"/>
+  <label>Min profit %
+    <input type="number" id="min-profit" value="0.5" min="0" max="20" step="0.1" style="width:72px"/>
   </label>
   <label>Sport
-    <select id="sport-filter" style="margin-left:6px">
+    <select id="sport-filter">
       <option value="">All</option>
       <option value="nfl">NFL</option>
       <option value="nba">NBA</option>
       <option value="mlb">MLB</option>
+      <option value="nhl">NHL</option>
+      <option value="ncaaf">NCAAF</option>
+      <option value="ncaab">NCAAB</option>
     </select>
   </label>
-  <button onclick="loadArbs()">🔄 Refresh</button>
+  <button onclick="loadArbs()">↺ Refresh</button>
   <span id="arb-count"></span>
 </div>
+
 <div class="table-wrap">
-  <table id="arb-table">
+  <table>
     <thead>
       <tr>
-        <th>Sport</th><th>Matchup</th><th>Book (Home)</th><th>Odds</th>
-        <th>Book (Away)</th><th>Odds</th><th>Profit %</th>
-        <th>Stake Split ($100)</th><th>Guaranteed $</th><th>Found At</th>
+        <th>Sport</th>
+        <th>Game</th>
+        <th>Bet Home ↗</th>
+        <th>Bet Away ↗</th>
+        <th>Profit %</th>
+        <th>$100 Split</th>
+        <th>Lock-in $</th>
+        <th>Books</th>
+        <th>Age</th>
       </tr>
     </thead>
     <tbody id="arb-body">
-      <tr><td colspan="10" id="empty"><div class="spinner"></div> Loading arb opportunities...</td></tr>
+      <tr id="empty-row"><td colspan="9"><span class="spinner"></span>Loading…</td></tr>
     </tbody>
   </table>
 </div>
+
 <script>
+  let nextRefreshAt = Date.now() + 30000;
+  let timerInterval = null;
+
+  function relativeTime(isoStr) {
+    const d = new Date(isoStr.endsWith('Z') ? isoStr : isoStr + 'Z');
+    const secs = Math.floor((Date.now() - d) / 1000);
+    if (secs < 5)   return 'just now';
+    if (secs < 60)  return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+    return Math.floor(secs / 3600) + 'h ago';
+  }
+
+  function sportClass(sport) {
+    const map = { nfl:'sport-nfl', nba:'sport-nba', mlb:'sport-mlb',
+                  nhl:'sport-nhl', ncaaf:'sport-ncaaf', ncaab:'sport-ncaab' };
+    return map[sport?.toLowerCase()] || 'sport-other';
+  }
+
+  function oddsClass(odds) {
+    return String(odds).startsWith('-') ? 'odds-neg' : 'odds-pos';
+  }
+
+  function profitClass(pct) {
+    return pct < 2 ? 'profit-low' : pct < 5 ? 'profit-med' : 'profit-high';
+  }
+
+  function startCountdown() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      const rem = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
+      document.getElementById('countdown').textContent = rem + 's';
+    }, 500);
+  }
+
   async function loadArbs() {
-    const minProfit = document.getElementById("min-profit").value || 0.5;
-    const sport = document.getElementById("sport-filter").value;
-    const tbody = document.getElementById("arb-body");
-    const count = document.getElementById("arb-count");
-    tbody.innerHTML = `<tr><td colspan="10" id="empty"><div class="spinner"></div> Fetching...</td></tr>`;
+    const minProfit = parseFloat(document.getElementById('min-profit').value) || 0.5;
+    const sport = document.getElementById('sport-filter').value;
+    const tbody = document.getElementById('arb-body');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
+
+    tbody.innerHTML = '<tr id="empty-row"><td colspan="9"><span class="spinner"></span>Fetching…</td></tr>';
+
     try {
       const res = await fetch(`/api/arbs?min_profit=${minProfit}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let data = await res.json();
       if (sport) data = data.filter(d => d.sport === sport);
-      document.getElementById("status").textContent = "● Live";
-      document.getElementById("status").style.color = "#3fb950";
-      count.textContent = `${data.length} opportunit${data.length !== 1 ? "ies" : "y"} found`;
+
+      dot.className = 'live';
+      statusText.textContent = 'Live';
+      document.getElementById('last-scan').textContent =
+        data.length ? relativeTime(data[0].found_at) : 'no data yet';
+
+      // Average books checked
+      const withBooks = data.filter(d => d.books_checked > 0);
+      if (withBooks.length) {
+        const avg = withBooks.reduce((s, d) => s + d.books_checked, 0) / withBooks.length;
+        document.getElementById('avg-books').textContent = avg.toFixed(1);
+      }
+
+      document.getElementById('arb-count').textContent =
+        `${data.length} opportunit${data.length !== 1 ? 'ies' : 'y'}`;
+
       if (!data.length) {
-        tbody.innerHTML = `<tr><td colspan="10" id="empty">No arbs found yet — scan running every 60s ⏳</td></tr>`;
+        tbody.innerHTML = '<tr id="empty-row"><td colspan="9">No arbs found yet — scanner runs every 30 s ⏳</td></tr>';
         return;
       }
+
       tbody.innerHTML = data.map(arb => {
         const pct = parseFloat(arb.profit_pct);
-        const cls = pct < 2 ? "profit-low" : pct < 5 ? "profit-med" : "profit-high";
-        const dt = new Date(arb.found_at + "Z").toLocaleTimeString();
         return `<tr>
-          <td><span class="sport-tag">${arb.sport}</span></td>
-          <td><strong>${arb.home_team}</strong> vs <strong>${arb.away_team}</strong></td>
-          <td><span class="book-tag">${arb.book_home}</span></td>
-          <td>${arb.home_odds}</td>
-          <td><span class="book-tag">${arb.book_away}</span></td>
-          <td>${arb.away_odds}</td>
-          <td><span class="profit-badge ${cls}">+${pct}%</span></td>
-          <td>$${arb.stake_home} / $${arb.stake_away}</td>
-          <td><strong style="color:#3fb950">$${arb.guaranteed_profit}</strong></td>
-          <td style="color:#8b949e;font-size:0.8rem">${dt}</td>
+          <td><span class="sport-tag ${sportClass(arb.sport)}">${arb.sport.toUpperCase()}</span></td>
+          <td class="matchup"><strong>${arb.home_team}</strong><span class="vs">vs</span><strong>${arb.away_team}</strong></td>
+          <td>
+            <div class="book-cell">
+              <span class="book-name">${arb.book_home}</span>
+              <span class="odds-val ${oddsClass(arb.home_odds)}">${arb.home_odds}</span>
+            </div>
+          </td>
+          <td>
+            <div class="book-cell">
+              <span class="book-name">${arb.book_away}</span>
+              <span class="odds-val ${oddsClass(arb.away_odds)}">${arb.away_odds}</span>
+            </div>
+          </td>
+          <td><span class="profit-badge ${profitClass(pct)}">+${pct.toFixed(3)}%</span></td>
+          <td class="stake-cell">$${arb.stake_home} / $${arb.stake_away}</td>
+          <td><span class="gprofit">$${arb.guaranteed_profit}</span></td>
+          <td class="books-checked">${arb.books_checked || '—'}</td>
+          <td class="age" data-iso="${arb.found_at}">${relativeTime(arb.found_at)}</td>
         </tr>`;
-      }).join("");
+      }).join('');
+
     } catch (e) {
-      document.getElementById("status").textContent = "● Offline";
-      document.getElementById("status").style.color = "#f85149";
-      tbody.innerHTML = `<tr><td colspan="10" id="empty">Backend not reachable. Is the server running?</td></tr>`;
+      dot.className = 'error';
+      statusText.textContent = 'Offline';
+      tbody.innerHTML = `<tr id="empty-row"><td colspan="9">Backend not reachable — is the server running?</td></tr>`;
     }
+
+    // Schedule next auto-refresh
+    nextRefreshAt = Date.now() + 30000;
+    startCountdown();
   }
+
+  // Initial load + auto-refresh every 30 s
   loadArbs();
+  startCountdown();
   setInterval(loadArbs, 30000);
+
+  // Keep relative timestamps fresh without a full reload
+  setInterval(() => {
+    document.querySelectorAll('.age[data-iso]').forEach(el => {
+      el.textContent = relativeTime(el.dataset.iso);
+    });
+  }, 10000);
 </script>
 </body>
 </html>

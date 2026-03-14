@@ -3,6 +3,7 @@ import os
 
 DB_PATH = os.getenv("DB_PATH", "arbs.db")
 
+
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -19,10 +20,20 @@ async def init_db():
                 stake_home REAL,
                 stake_away REAL,
                 guaranteed_profit REAL,
+                books_checked INTEGER DEFAULT 0,
                 found_at TEXT
             )
         """)
+        # Safe migration for pre-existing databases
+        try:
+            await db.execute(
+                "ALTER TABLE arb_opportunities ADD COLUMN books_checked INTEGER DEFAULT 0"
+            )
+        except Exception as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
         await db.commit()
+
 
 async def save_arbs(arbs: list[dict]):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -31,16 +42,19 @@ async def save_arbs(arbs: list[dict]):
                 INSERT INTO arb_opportunities
                 (sport, home_team, away_team, book_home, book_away,
                  home_odds, away_odds, profit_pct, stake_home, stake_away,
-                 guaranteed_profit, found_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 guaranteed_profit, books_checked, found_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 arb["sport"], arb["home_team"], arb["away_team"],
                 arb["book_home"], arb["book_away"],
                 arb["home_odds"], arb["away_odds"],
                 arb["profit_pct"], arb["stake_home"], arb["stake_away"],
-                arb["guaranteed_profit_per_100"], arb["found_at"]
+                arb["guaranteed_profit_per_100"],
+                arb.get("books_checked", 0),
+                arb["found_at"],
             ))
         await db.commit()
+
 
 async def get_recent_arbs(min_profit: float = 0.0) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
