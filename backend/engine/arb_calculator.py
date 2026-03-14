@@ -1,95 +1,116 @@
-from backend.engine.normalizer import match_events, normalize_odds, decimal_to_implied
-from itertools import combinations
-
-# Default total bankroll for stake sizing
-DEFAULT_BANKROLL = 1000.0
+from backend.engine.normalizer import american_to_decimal, match_events
+from datetime import datetime, timezone
 
 
-def calculate_arb(odds1: float, odds2: float, bankroll: float = DEFAULT_BANKROLL):
-    """Calculate arbitrage profit and optimal stakes for a two-way market.
-
-    Parameters
-    ----------
-    odds1, odds2 : float
-        Decimal odds for the two outcomes.
-    bankroll : float
-        Total amount to split across both bets.
-
-    Returns
-    -------
-    dict or None
-        ``{"profit_pct", "stake1", "stake2", "payout"}`` when an arb exists.
+def find_arbs_from_events(events: list[dict], min_profit: float = 0.5) -> list[dict]:
     """
-    if odds1 <= 1 or odds2 <= 1:
-        return None
+    For each game, find the best home odds and best away odds across ALL available
+    bookmakers, then check if an arbitrage opportunity exists.
 
-    imp1 = decimal_to_implied(odds1)
-    imp2 = decimal_to_implied(odds2)
-    total_implied = imp1 + imp2
-
-    if total_implied >= 1:
-        return None  # no arb
-
-    profit_pct = round((1 / total_implied - 1) * 100, 4)
-    stake1 = round(bankroll * imp1 / total_implied, 2)
-    stake2 = round(bankroll * imp2 / total_implied, 2)
-    payout = round(stake1 * odds1, 2)
-
-    return {
-        "profit_pct": profit_pct,
-        "stake1": stake1,
-        "stake2": stake2,
-        "payout": payout,
-    }
-
-
-def find_all_arbs(data_by_book: dict, min_profit: float = 0.5) -> list:
-    """Find every two-way arb across all supplied sportsbook data.
-
-    Parameters
-    ----------
-    data_by_book : dict
-        ``{"BookName": [{"event": ..., "outcome": ..., "odds": ...}, ...]}``
-    min_profit : float
-        Minimum profit percentage to include.
-
-    Returns
-    -------
-    list of dict
-        Each dict describes an arbitrage opportunity.
+    This is far more powerful than pairwise book comparison — it discovers arbs
+    that span any combination of books in a single pass.
     """
-    matched_events = match_events(data_by_book)
-    arbs: list[dict] = []
+    arbs = []
+    for event in events:
+        books = event.get("books", {})
+        if len(books) < 2:
+            continue
 
-    for event_group in matched_events:
-        books_in_event = list(event_group["books"].keys())
+        best_home: tuple | None = None  # (decimal_odds, book_name, american_str)
+        best_away: tuple | None = None
 
-        for book_a, book_b in combinations(books_in_event, 2):
-            entry_a = event_group["books"][book_a]
-            entry_b = event_group["books"][book_b]
+        for book_name, odds in books.items():
+            h = american_to_decimal(odds.get("home_odds", ""))
+            a = american_to_decimal(odds.get("away_odds", ""))
+            if h and (best_home is None or h > best_home[0]):
+                best_home = (h, book_name, odds["home_odds"])
+            if a and (best_away is None or a > best_away[0]):
+                best_away = (a, book_name, odds["away_odds"])
 
-            odds_a = entry_a["odds"]
-            odds_b = entry_b["odds"]
+        if not best_home or not best_away:
+            continue
 
-            if odds_a <= 1 or odds_b <= 1:
-                continue
+        inv_sum = (1 / best_home[0]) + (1 / best_away[0])
+        if inv_sum >= 1.0:
+            continue
 
-            result = calculate_arb(odds_a, odds_b)
-            if result and result["profit_pct"] >= min_profit:
-                arbs.append(
-                    {
-                        "event": event_group["event"],
-                        "market": "moneyline",
-                        "book1": book_a,
-                        "outcome1": entry_a["outcome"],
-                        "odds1": odds_a,
-                        "book2": book_b,
-                        "outcome2": entry_b["outcome"],
-                        "odds2": odds_b,
-                        "profit_pct": result["profit_pct"],
-                        "stake1": result["stake1"],
-                        "stake2": result["stake2"],
-                    }
-                )
+        profit_pct = round((1 - inv_sum) * 100, 3)
+        if profit_pct < min_profit:
+            continue
 
-    return arbs
+        total = 100
+        stake_home = round((total / best_home[0]) / inv_sum, 2)
+        stake_away = round((total / best_away[0]) / inv_sum, 2)
+
+        arbs.append({
+            "sport": event["sport"],
+            "home_team": event["home"],
+            "away_team": event["away"],
+            "book_home": best_home[1],
+            "book_away": best_away[1],
+            "home_odds": best_home[2],
+            "away_odds": best_away[2],
+            "profit_pct": profit_pct,
+            "stake_home": stake_home,
+            "stake_away": stake_away,
+            "guaranteed_profit_per_100": round(total * (1 - inv_sum), 2),
+            "found_at": datetime.now(timezone.utc).isoformat(),
+            "books_checked": len(books),
+        })
+
+    return sorted(arbs, key=lambda x: x["profit_pct"], reverse=True)
+
+
+def calculate_arb(event_a: dict, event_b: dict) -> dict | None:
+    """Pairwise arb check between two single-book event records (scraper-only fallback)."""
+    combos = [
+        (event_a, event_b),
+        (event_b, event_a),
+    ]
+    best = None
+    for home_book, away_book in combos:
+        dec_home = american_to_decimal(home_book.get("home_odds", ""))
+        dec_away = american_to_decimal(away_book.get("away_odds", ""))
+        if not dec_home or not dec_away:
+            continue
+        inv_sum = (1 / dec_home) + (1 / dec_away)
+        if inv_sum < 1.0:
+            profit_pct = round((1 - inv_sum) * 100, 3)
+            total_stake = 100
+            stake_home = round((total_stake / dec_home) / inv_sum, 2)
+            stake_away = round((total_stake / dec_away) / inv_sum, 2)
+            guaranteed_profit = round(total_stake * (1 - inv_sum), 2)
+            result = {
+                "sport": home_book.get("sport", "unknown"),
+                "home_team": home_book.get("home", ""),
+                "away_team": away_book.get("away", ""),
+                "book_home": home_book.get("book", ""),
+                "book_away": away_book.get("book", ""),
+                "home_odds": home_book.get("home_odds", ""),
+                "away_odds": away_book.get("away_odds", ""),
+                "profit_pct": profit_pct,
+                "stake_home": stake_home,
+                "stake_away": stake_away,
+                "guaranteed_profit_per_100": guaranteed_profit,
+                "found_at": datetime.now(timezone.utc).isoformat(),
+                "books_checked": 2,
+            }
+            if best is None or profit_pct > best["profit_pct"]:
+                best = result
+    return best
+
+
+def find_all_arbs(all_book_data: dict[str, list[dict]], min_profit: float = 0.5) -> list[dict]:
+    """Pairwise arb finder for flat scraped data (no-API fallback path)."""
+    arbs = []
+    books = list(all_book_data.keys())
+    for i in range(len(books)):
+        for j in range(i + 1, len(books)):
+            book_a = books[i]
+            book_b = books[j]
+            matched = match_events(all_book_data[book_a], all_book_data[book_b])
+            for event_a, event_b in matched:
+                arb = calculate_arb(event_a, event_b)
+                if arb and arb["profit_pct"] >= min_profit:
+                    arbs.append(arb)
+    return sorted(arbs, key=lambda x: x["profit_pct"], reverse=True)

@@ -1,72 +1,55 @@
-# Agent Orange Sports — Arbitrage Finder
+# 🟠 Agent Orange Sports — Arb Finder
 
-A full-stack sports arbitrage analytics system that scrapes odds from multiple
-sportsbooks, matches events across books, calculates arbitrage opportunities,
-and displays them in a live dark-themed dashboard.
+A full-stack sports arbitrage analytics system. Scrapes odds from FanDuel, DraftKings, and BetMGM using Playwright (no API required), matches events across books, calculates arbitrage opportunities, and displays them in a live dashboard.
 
-## Features
+## Stack
+- **Backend:** Python + FastAPI
+- **Scraping:** Playwright (headless Chromium) — no API key needed
+- **API Fallback:** The Odds API (optional, set `ODDS_API_KEY` in Replit Secrets)
+- **Arb Engine:** Fuzzy event matching + decimal odds math
+- **DB:** SQLite (aiosqlite)
+- **Frontend:** Vanilla HTML/JS dashboard
 
-- **Playwright scrapers** for FanDuel, DraftKings, and BetMGM (headless, stealth)
-- **The Odds API** fallback when scrapers return insufficient data
-- **Fuzzy event matching** across sportsbooks (FuzzyWuzzy)
-- **Arbitrage calculator** with optimal stake sizing
-- **Live dashboard** (auto-refreshing, dark theme, mobile-friendly)
-- **SQLite storage** via aiosqlite for historical arb tracking
-- **FastAPI** backend with REST endpoints
+## How to Run on Replit
+1. Import this repo into Replit
+2. (Optional) Add `ODDS_API_KEY` to Replit Secrets
+3. Click **Run** — `start.sh` handles everything
+
+## How It Works
+1. Playwright scrapes FanDuel, DraftKings, BetMGM every 60 seconds
+2. Events are fuzzy-matched across books
+3. Arb calculator checks if `sum(1/odds) < 1.0`
+4. Opportunities are saved to SQLite and shown in the dashboard
+5. If scraping fails, falls back to The Odds API automatically
+
+## Arbitrage Math
+- Convert American odds to decimal: `+150 → 2.5`, `-110 → 1.909`
+- Implied probability: `1 / decimal_odds`
+- Arb exists when: `(1/oddsA) + (1/oddsB) < 1.0`
+- Profit %: `(1 - inv_sum) * 100`
 
 ## Project Structure
-
 ```
 Agent-orange-sports/
 ├── backend/
-│   ├── main.py              # FastAPI application
-│   ├── scheduler.py          # Async polling loop
+│   ├── main.py           # FastAPI app
+│   ├── scheduler.py      # Polling loop
 │   ├── scrapers/
-│   │   ├── fanduel.py        # FanDuel Playwright scraper
-│   │   ├── draftkings.py     # DraftKings Playwright scraper
-│   │   ├── betmgm.py         # BetMGM Playwright scraper
-│   │   └── odds_api.py       # The Odds API fallback
+│   │   ├── fanduel.py    # Playwright scraper
+│   │   ├── draftkings.py # Playwright scraper
+│   │   ├── betmgm.py     # Playwright scraper
+│   │   └── odds_api.py   # API fallback
 │   ├── engine/
-│   │   ├── normalizer.py     # Odds conversion & fuzzy matching
-│   │   └── arb_calculator.py # Core arbitrage logic
+│   │   ├── normalizer.py     # Odds conversion + fuzzy matching
+│   │   └── arb_calculator.py # Core arb logic
 │   └── db/
-│       └── database.py       # aiosqlite database layer
+│       └── database.py   # SQLite (aiosqlite)
 ├── frontend/
-│   └── index.html            # Live arb dashboard
+│   └── index.html        # Live dashboard
 ├── requirements.txt
 ├── .replit
 ├── start.sh
 └── README.md
 ```
 
-## Quick Start
-
-### On Replit
-
-Click **Run** — the `.replit` config will install dependencies, set up Playwright,
-and start the server on port 8080.
-
-### Locally
-
-```bash
-pip install -r requirements.txt
-python -m playwright install chromium
-uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
-Open <http://localhost:8080> to view the dashboard.
-
-## Environment Variables
-
-| Variable | Description | Default |
-|---|---|---|
-| `ODDS_API_KEY` | API key for [The Odds API](https://the-odds-api.com) | *(empty — API fallback disabled)* |
-| `DB_PATH` | Path to the SQLite database file | `arb_data.db` |
-
-## API Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/arbs?min_profit=0.5` | Recent arbitrage opportunities |
-| `GET` | `/api/status` | Health-check / version |
-| `GET` | `/` | Live dashboard (HTML) |
+> ⚠️ For educational and analytical use. Always check sportsbook Terms of Service.

@@ -1,8 +1,7 @@
-import asyncio
+import re
 import random
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
-from backend.scrapers.common import USER_AGENTS, MIN_DELAY, MAX_DELAY
 
 FANDUEL_URLS = {
     "nfl": "https://sportsbook.fanduel.com/navigation/nfl",
@@ -10,62 +9,104 @@ FANDUEL_URLS = {
     "mlb": "https://sportsbook.fanduel.com/navigation/mlb",
 }
 
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+]
 
-async def scrape_fanduel(sport: str) -> list:
-    """Scrape moneyline odds from FanDuel for *sport*.
+# Matches aria-labels like "Kansas City Chiefs +150 to win"
+_ARIA_ODDS_RE = re.compile(
+    r"^(?P<team>.+?)\s+(?P<odds>[+\-]\d+)\s+to\s+win", re.IGNORECASE
+)
 
-    Returns a list of dicts: ``[{"event", "outcome", "odds", "book"}, ...]``
+
+def _parse_aria_events(soup: BeautifulSoup, sport: str) -> list[dict]:
     """
-    url = FANDUEL_URLS.get(sport)
-    if not url:
-        return []
+    Parse FanDuel's aria-label attributes on bet buttons — much more stable
+    than class-based selectors which change with every React build.
+    Groups consecutive home/away button pairs into matchups.
+    """
+    results = []
+    buttons = soup.find_all("button", attrs={"aria-label": True})
+    parsed = []
+    for btn in buttons:
+        m = _ARIA_ODDS_RE.match(btn["aria-label"])
+        if m:
+            parsed.append({"team": m.group("team").strip(), "odds": m.group("odds")})
 
-    results: list[dict] = []
+    # Pair consecutive entries as home / away
+    for i in range(0, len(parsed) - 1, 2):
+        home, away = parsed[i], parsed[i + 1]
+        results.append({
+            "book": "FanDuel",
+            "sport": sport,
+            "home": home["team"],
+            "away": away["team"],
+            "home_odds": home["odds"],
+            "away_odds": away["odds"],
+        })
+    return results
 
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent=random.choice(USER_AGENTS),
-                viewport={"width": 1920, "height": 1080},
-                locale="en-US",
-            )
 
-            page = await context.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            await asyncio.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
+def _parse_class_events(soup: BeautifulSoup, sport: str) -> list[dict]:
+    """Fallback: broad class-based extraction."""
+    results = []
+    events = soup.select('[class*="event"], [class*="Event"]')
+    for event in events[:20]:
+        team_els = event.select(
+            '[class*="participant"], [class*="team"], [class*="Team"], [class*="name"]'
+        )
+        odds_els = event.select(
+            '[class*="odds"], [class*="Odds"], [class*="price"], [class*="Price"]'
+        )
+        teams = [t.get_text(strip=True) for t in team_els if t.get_text(strip=True)]
+        odds = [o.get_text(strip=True) for o in odds_els if o.get_text(strip=True)]
+        if len(teams) >= 2 and len(odds) >= 2:
+            results.append({
+                "book": "FanDuel",
+                "sport": sport,
+                "home": teams[0],
+                "away": teams[1],
+                "home_odds": odds[0],
+                "away_odds": odds[1],
+            })
+    return results
 
+
+async def scrape_fanduel(sport: str = "nfl") -> list[dict]:
+    results = []
+    url = FANDUEL_URLS.get(sport, FANDUEL_URLS["nfl"])
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            user_agent=random.choice(USER_AGENTS),
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+        )
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+        )
+        page = await context.new_page()
+        try:
+            await page.goto(url, timeout=30000, wait_until="networkidle")
+            await page.wait_for_timeout(random.randint(3000, 5000))
             html = await page.content()
             soup = BeautifulSoup(html, "html.parser")
 
-            # FanDuel renders event rows with data attributes;
-            # selectors may need updating when FanDuel changes layout.
-            event_rows = soup.select("[class*='event-card'], [class*='EventCard']")
+            results = _parse_aria_events(soup, sport)
+            if not results:
+                results = _parse_class_events(soup, sport)
 
-            for row in event_rows:
-                teams = row.select("[class*='participant'], [class*='team-name']")
-                odds_els = row.select("[class*='price'], [class*='odds']")
-
-                if len(teams) >= 2 and len(odds_els) >= 2:
-                    event_name = f"{teams[0].get_text(strip=True)} vs {teams[1].get_text(strip=True)}"
-                    for team, odds_el in zip(teams, odds_els):
-                        odds_text = odds_el.get_text(strip=True).replace("+", "")
-                        try:
-                            odds_val = float(odds_text)
-                        except ValueError:
-                            continue
-                        results.append(
-                            {
-                                "event": event_name,
-                                "outcome": team.get_text(strip=True),
-                                "odds": odds_val,
-                                "book": "FanDuel",
-                                "sport": sport,
-                            }
-                        )
-
+            if results:
+                print(f"  [FanDuel] {sport}: {len(results)} events")
+        except Exception as e:
+            print(f"  [FanDuel] {sport}: scrape error — {e}")
+        finally:
             await browser.close()
-    except Exception as exc:
-        print(f"[FanDuel] Scrape error ({sport}): {exc}")
 
     return results

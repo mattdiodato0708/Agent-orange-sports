@@ -1,99 +1,43 @@
 from fuzzywuzzy import fuzz
 
-# Minimum fuzzy-match score (0–100) to consider two event names the same.
-# Set conservatively low to handle sportsbook naming variations (e.g.
-# "LA Lakers" vs "Los Angeles Lakers", abbreviations, etc.).
-MATCH_THRESHOLD = 70
+# Minimum fuzzy-match score (0–100) to consider two event names the same game
+MATCH_THRESHOLD = 80
 
-
-def american_to_decimal(odds: float) -> float:
-    """Convert American odds to decimal odds."""
-    if odds >= 100:
-        return round(odds / 100 + 1, 4)
-    elif odds <= -100:
-        return round(100 / abs(odds) + 1, 4)
-    return 0.0
-
-
-def decimal_to_implied(decimal_odds: float) -> float:
-    """Convert decimal odds to an implied probability (0-1)."""
-    if decimal_odds <= 0:
-        return 0.0
-    return round(1 / decimal_odds, 6)
-
-
-def normalize_odds(odds_value) -> float:
-    """Ensure odds are in decimal format.
-
-    If the value looks like American odds (abs >= 100), convert it first.
-    """
+def american_to_decimal(american: str) -> float | None:
     try:
-        odds = float(odds_value)
-    except (TypeError, ValueError):
-        return 0.0
+        val = int(str(american).replace("+", "").replace("\u2212", "-").replace("\u2013", "-").strip())
+        if val > 0:
+            return round((val / 100) + 1, 4)
+        else:
+            return round((100 / abs(val)) + 1, 4)
+    except (ValueError, TypeError):
+        return None
 
-    if abs(odds) >= 100:
-        return american_to_decimal(odds)
-    if odds > 1:
-        return round(odds, 4)
-    return 0.0
+def normalize_team_name(name: str) -> str:
+    name = name.lower().strip()
+    replacements = {
+        "new england": "patriots", "kansas city": "chiefs",
+        "green bay": "packers", "san francisco": "49ers",
+        "los angeles": "la", "new york": "ny",
+        "golden state": "warriors", "oklahoma city": "thunder",
+    }
+    for k, v in replacements.items():
+        name = name.replace(k, v)
+    return name.strip()
 
-
-def fuzzy_match(name1: str, name2: str) -> bool:
-    """Return True when two event / team names are similar enough."""
-    score = fuzz.token_sort_ratio(name1.lower().strip(), name2.lower().strip())
-    return score >= MATCH_THRESHOLD
-
-
-def match_events(data_by_book: dict) -> list:
-    """Match events across sportsbooks using fuzzy string matching.
-
-    Parameters
-    ----------
-    data_by_book : dict
-        ``{"BookName": [{"event": ..., "outcome": ..., "odds": ...}, ...]}``
-
-    Returns
-    -------
-    list of dict
-        Each dict groups the same event across books with normalised odds.
-    """
-    books = list(data_by_book.keys())
-    if len(books) < 2:
-        return []
-
-    matched: list[dict] = []
-    used_indices: dict[str, set] = {b: set() for b in books}
-
-    for i, item_a in enumerate(data_by_book[books[0]]):
-        event_a = item_a.get("event", "")
-        if not event_a:
-            continue
-
-        group = {
-            "event": event_a,
-            "books": {
-                books[0]: {
-                    "outcome": item_a.get("outcome", ""),
-                    "odds": normalize_odds(item_a.get("odds", 0)),
-                }
-            },
-        }
-
-        for other_book in books[1:]:
-            for j, item_b in enumerate(data_by_book[other_book]):
-                if j in used_indices[other_book]:
-                    continue
-                event_b = item_b.get("event", "")
-                if fuzzy_match(event_a, event_b):
-                    group["books"][other_book] = {
-                        "outcome": item_b.get("outcome", ""),
-                        "odds": normalize_odds(item_b.get("odds", 0)),
-                    }
-                    used_indices[other_book].add(j)
-                    break
-
-        if len(group["books"]) >= 2:
-            matched.append(group)
-
+def match_events(book_a_events: list[dict], book_b_events: list[dict], threshold: int = MATCH_THRESHOLD) -> list[tuple]:
+    matched = []
+    for a in book_a_events:
+        a_home = normalize_team_name(a.get("home", ""))
+        a_away = normalize_team_name(a.get("away", ""))
+        for b in book_b_events:
+            b_home = normalize_team_name(b.get("home", ""))
+            b_away = normalize_team_name(b.get("away", ""))
+            score = max(
+                (fuzz.ratio(a_home, b_home) + fuzz.ratio(a_away, b_away)) / 2,
+                (fuzz.ratio(a_home, b_away) + fuzz.ratio(a_away, b_home)) / 2,
+            )
+            if score >= threshold:
+                matched.append((a, b))
+                break
     return matched
