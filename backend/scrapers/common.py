@@ -9,3 +9,4 @@ USER_AGENTS = [
 # Minimum / maximum random delay (seconds) between page interactions
 MIN_DELAY = 1.0
 MAX_DELAY = 3.0
+
